@@ -29,4 +29,6 @@ private:
 	bool isEmpty();
 	bool isFull();
 
+	void getNextMsgHeader(MsgHeader &msgHeader);
+
 };

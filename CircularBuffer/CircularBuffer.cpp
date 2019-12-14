@@ -28,7 +28,7 @@ int CircularBuffer::sizeLeft()
 	}
 	else if (front > rear)
 	{
-		return (front - rear - sizeof(SharedQueueHeader));
+		return (front - rear);
 	}
 	else
 	{
@@ -38,12 +38,23 @@ int CircularBuffer::sizeLeft()
 
 bool CircularBuffer::isEmpty()
 {
-	return sizeLeft() == (m_len - sizeof(SharedQueueHeader));
+	return m_shared_queue_header->front == m_shared_queue_header->rear;
 }
 
 bool CircularBuffer::isFull()
 {
-	return sizeLeft() == 0;
+	int rear = m_shared_queue_header->rear;
+	int front = m_shared_queue_header->front;
+	MsgHeader msgHeader;
+	getNextMsgHeader(msgHeader);
+	if (rear > front)
+	{
+		return (front + sizeof(MsgHeader)+msgHeader.len) == rear;
+	}
+	else
+	{
+		return (front + sizeof(MsgHeader)+msgHeader.len + sizeof(SharedQueueHeader)) % m_len == rear;
+	}
 }
 
 bool CircularBuffer::Write(MsgHeader& msgHeader, char* data)
@@ -74,12 +85,30 @@ bool CircularBuffer::Write(MsgHeader& msgHeader, char* data)
 	else
 	{
 		int first_part_len = m_len - rear;
-		memcpy(shared_mem_start + rear, full_data, first_part_len);
-
 		int second_part_len = total_len - first_part_len;
-		memcpy(shared_mem_start + sizeof(SharedQueueHeader), full_data + first_part_len, second_part_len);
 
+		memcpy(shared_mem_start + rear, full_data, first_part_len);
+		memcpy(shared_mem_start + sizeof(SharedQueueHeader), full_data + first_part_len, second_part_len);
 		m_shared_queue_header->rear = sizeof(SharedQueueHeader)+second_part_len;
+	}
+}
+
+void CircularBuffer::getNextMsgHeader(MsgHeader &msgHeader){
+	int front = m_shared_queue_header->front;
+	char *shared_mem_start = m_shared_memory_region->getStart();
+	char headerData[100];
+
+	if (front + sizeof(MsgHeader) < m_len) // header is not splitted
+	{
+		memcpy(&msgHeader, shared_mem_start + front, sizeof(MsgHeader));		
+	}
+	else
+	{
+		int first_part_len = m_len - front;
+		int second_part_len = sizeof(MsgHeader)-first_part_len;
+		memcpy(headerData, shared_mem_start + front, first_part_len);
+		memcpy(headerData + first_part_len, shared_mem_start + sizeof(SharedQueueHeader), second_part_len);
+		memcpy(&msgHeader, headerData, sizeof(MsgHeader));
 	}
 }
 
@@ -132,13 +161,10 @@ bool CircularBuffer::Read(char* data)
 	{
 		int first_part_len = m_len - front;
 		int second_part_len = data_len - first_part_len;
-
 		memcpy(data, shared_mem_start + front, first_part_len);
 		memcpy(data + first_part_len, shared_mem_start + sizeof(SharedQueueHeader), second_part_len);
-
 		m_shared_queue_header->front = sizeof(SharedQueueHeader)+second_part_len;
 	}
-
 
 	return true;
 }

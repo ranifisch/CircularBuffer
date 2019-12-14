@@ -5,7 +5,7 @@ SharedMemoryRegion::SharedMemoryRegion(bool is_writer)
 {
 	HANDLE hMapFile = NULL;
 	char* pBuf;
-	m_length = 1000;
+	m_length = 100;
 	if (is_writer)
 	{
 
